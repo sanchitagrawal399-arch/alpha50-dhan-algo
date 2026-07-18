@@ -1,11 +1,12 @@
 import os, threading, time, gspread, dhanhq
+from http.server import BaseHTTPRequestHandler, HTTPServer
 from oauth2client.service_account import ServiceAccountCredentials
 from datetime import datetime
 
 # ==============================================================================
 # 🛠️ SETUP: SHEET & DHAN CONNECTION
 # ==============================================================================
-# Service account path (Render ke Secret Files mein jo upload kiya hai)
+# Render ke Secret Files se service_account.json read ho raha hai
 creds = ServiceAccountCredentials.from_json_keyfile_name('service_account.json', 
         ['https://spreadsheets.google.com/feeds', 'https://www.googleapis.com/auth/drive'])
 client = gspread.authorize(creds)
@@ -16,15 +17,31 @@ def log_trade(stock, t_type, e_time, e_price, qty, status):
     row = [stock, t_type, e_time, "", e_price, "", qty, "0", status]
     sheet.append_row(row)
 
+# ==============================================================================
+# 🌐 DUMMY SERVER (Render ke Port issue ko fix karne ke liye)
+# ==============================================================================
+def start_dummy_server():
+    port = int(os.environ.get('PORT', 10000))
+    server = HTTPServer(('0.0.0.0', port), lambda *args: BaseHTTPRequestHandler(*args))
+    print(f"✅ Web Server running on port {port}...", flush=True)
+    server.serve_forever()
+
+# ==============================================================================
+# 🤖 MAIN TRADING ENGINE
+# ==============================================================================
 def run_trading_bot():
     print("🚀 Alpha50 Trading Engine Live & Logging to Sheets...", flush=True)
-    # Yahan Dhan setup wahi purana wala rahega (Credentials sheet se load hoga)
-    # Jab bhi trade logic trigger ho, bas ye line likhna:
-    # log_trade("RELIANCE", "BUY", datetime.now().strftime("%H:%M:%S"), 2500, 10, "OPEN")
     
     while True:
-        # Yahan market hours mein strategy scanning logic chalega
+        # Yahan tumhara strategy logic aayega
+        # Jaise hi trade lena ho, bas log_trade() function call kar dena!
+        
+        print(f"[{datetime.now().strftime('%H:%M:%S')}] Monitoring Market...", flush=True)
         time.sleep(60)
 
 if __name__ == "__main__":
+    # 1. Dummy server start karo taaki Render khush rahe
+    threading.Thread(target=start_dummy_server, daemon=True).start()
+    
+    # 2. Asli Trading Engine start karo
     run_trading_bot()

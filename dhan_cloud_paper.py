@@ -1,52 +1,30 @@
-import sys, os, threading, time, requests, pandas as pd, numpy as np, dhanhq
-from http.server import BaseHTTPRequestHandler, HTTPServer
+import os, threading, time, gspread, dhanhq
+from oauth2client.service_account import ServiceAccountCredentials
 from datetime import datetime
 
 # ==============================================================================
-# 📊 GOOGLE SHEET CREDENTIAL LOADER (THE "SHEET-FIRST" METHOD)
+# 🛠️ SETUP: SHEET & DHAN CONNECTION
 # ==============================================================================
-def get_credentials():
-    sheet_id = os.environ.get("MY_SECRET_SHEET_ID")
-    url = f"https://docs.google.com/spreadsheets/d/{sheet_id}/export?format=csv"
-    try:
-        df = pd.read_csv(url)
-        df.columns = df.columns.str.strip()
-        client_id = str(df['Client_ID'].iloc[0]).strip()
-        access_token = str(df['Access_TOKEN'].iloc[0]).strip()
-        return client_id, access_token
-    except Exception as e:
-        print(f"❌ Error fetching from Sheet: {e}", flush=True)
-        return None, None
+# Service account path (Render ke Secret Files mein jo upload kiya hai)
+creds = ServiceAccountCredentials.from_json_keyfile_name('service_account.json', 
+        ['https://spreadsheets.google.com/feeds', 'https://www.googleapis.com/auth/drive'])
+client = gspread.authorize(creds)
+sheet = client.open_by_key(os.environ.get("MY_SECRET_SHEET_ID")).worksheet("Trades")
 
-# ==============================================================================
-# 🤖 BOT LOOP
-# ==============================================================================
+def log_trade(stock, t_type, e_time, e_price, qty, status):
+    # Column Order: Stock, Type, Entry_Time, Exit_Time, Entry_Price, Exit_Price, Quantity, P&L, Status
+    row = [stock, t_type, e_time, "", e_price, "", qty, "0", status]
+    sheet.append_row(row)
+
 def run_trading_bot():
-    print("🚀 Alpha50 Sheet-First Engine Initialized...", flush=True)
+    print("🚀 Alpha50 Trading Engine Live & Logging to Sheets...", flush=True)
+    # Yahan Dhan setup wahi purana wala rahega (Credentials sheet se load hoga)
+    # Jab bhi trade logic trigger ho, bas ye line likhna:
+    # log_trade("RELIANCE", "BUY", datetime.now().strftime("%H:%M:%S"), 2500, 10, "OPEN")
     
-    # Credentials sheet se utha rahe hain
-    cid, token = get_credentials()
-    
-    if not cid or not token:
-        print("❌ Critical: Credentials could not be loaded from Google Sheet!", flush=True)
-        return
-
-    try:
-        ctx = dhanhq.DhanContext(client_id=cid, access_token=token)
-        dhan = dhanhq.TraderControl(dhan_context=ctx)
-        print("✅ Connection Established via Google Sheet Credentials!", flush=True)
-    except Exception as e:
-        print(f"❌ Connection Error: {e}", flush=True)
-        return
-
     while True:
-        print(f"[{datetime.now().strftime('%H:%M:%S')}] Monitoring Market...", flush=True)
-        time.sleep(300)
+        # Yahan market hours mein strategy scanning logic chalega
+        time.sleep(60)
 
-# ==============================================================================
-# 🌐 LAUNCHER
-# ==============================================================================
 if __name__ == "__main__":
-    threading.Thread(target=run_trading_bot, daemon=True).start()
-    port = int(os.environ.get('PORT', 10000))
-    HTTPServer(('0.0.0.0', port), lambda *args: BaseHTTPRequestHandler(*args)).serve_forever()
+    run_trading_bot()

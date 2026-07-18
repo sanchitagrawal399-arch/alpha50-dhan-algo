@@ -1,83 +1,46 @@
-import time
-import os
-import pandas as pd
-from datetime import datetime
-from dhanhq import dhanhq
-
-# ==============================================================================
-# 📊 GOOGLE SHEET CONTROL LAYER (SECURED VIA ENV VARIABLES)
-# ==============================================================================
-SPREADSHEET_ID = os.environ.get("MY_SECRET_SHEET_ID") 
-SHEET_URL = f"https://docs.google.com/spreadsheets/d/{SPREADSHEET_ID}/export?format=csv"
-
-def get_live_credentials():
-    try:
-        df = pd.read_csv(SHEET_URL)
-        df.columns = df.columns.str.strip()
-        
-        if df.empty:
-            print("❌ Google Sheet is empty! Please add data in row 2.")
-            return None, None
-            
-        client_id = str(df['Client_ID'].iloc[0]).strip()
-        access_token = str(df['Access_TOKEN'].iloc[0]).strip()
-        return client_id, access_token
-    except Exception as e:
-        print(f"❌ Sheet Read Error: {e}")
-        return None, None
-
-CLIENT_ID, ACCESS_TOKEN = get_live_credentials()
-if not CLIENT_ID or not ACCESS_TOKEN or "YOUR_" in ACCESS_TOKEN:
-    print("❌ Critical: Valid credentials not found in Google Sheet.")
-    exit()
-
-# ==============================================================================
-# 🛡️ DHAN CONNECTION LAYER (FIXED FOR VERSION 2.2.0)
-# ==============================================================================
-# Naye update ke mutabik client initialization:
-try:
-    # Latest DhanHQ convention requires a distinct client structure
+==> Exited with status 1
+==> Common ways to troubleshoot your deploy: https://render.com/docs/troubleshooting-deploys
+==> Running 'python dhan_cloud_paper.py'
+==> Deploying...
+==> Setting WEB_CONCURRENCY=1 by default, based on available CPUs in the instance
+    dhan = dhanhq(client_id=CLIENT_ID, access_token=ACCESS_TOKEN)
+TypeError: dhanhq.__init__() got an unexpected keyword argument 'client_id'
+During handling of the above exception, another exception occurred:
+Traceback (most recent call last):
+  File "/opt/render/project/src/dhan_cloud_paper.py", line 47, in <module>
+    dhan = dhanhq()
+TypeError: dhanhq.__init__() missing 1 required positional argument: 'dhan_context'
+==> Exited with status 1
+==> Common ways to troubleshoot your deploy: https://render.com/docs/troubleshooting-deploys
+==> Running 'python dhan_cloud_paper.py'
+==> Deploying...
+==> Setting WEB_CONCURRENCY=1 by default, based on available CPUs in the instance
+==> Running 'python dhan_cloud_paper.py'
+Traceback (most recent call last):
+  File "/opt/render/project/src/dhan_cloud_paper.py", line 40, in <module>
     dhan = dhanhq(dhan_context={"client_id": CLIENT_ID, "access_token": ACCESS_TOKEN})
-except TypeError:
-    try:
-        # Fallback if structural initialization differs
-        dhan = dhanhq(CLIENT_ID, ACCESS_TOKEN)
-    except Exception as e:
-        print(f"❌ Initialization error: {e}")
-        exit()
-
-# ==============================================================================
-# 🎯 STRATEGY CORE RULEBOOK (ALPHA50 WEAPON MATRIX)
-# ==============================================================================
-ALLOWED_STOCKS = [
-    "NESTLEIND", "DRREDDY", "ICICIBANK", "GRASIM", "CIPLA", 
-    "BPCL", "POWERGRID", "ADANIPORTS", "COALINDIA", 
-    "SUNPHARMA", "HEROMOTOCO", "AXISBANK", "BHARTIARTL", 
-    "LT", "M_and_M", "RELIANCE", "SBIN", "NTPC"
-]
-
-print("🚀 Alpha50 Strategy Rules Loaded Successfully!")
-try:
-    profile = dhan.get_profile()
-    if profile.get('status') == 'success':
-        print(f"✅ Dhan API Securely Authenticated. Active Client: {profile['data']['dhanClientId']}")
-    else:
-        print("❌ Dhan authentication failed. Please check the token inside your Sheet.")
-        exit()
-except Exception as e:
-    print(f"❌ Dhan API Connection Error: {e}")
-    exit()
-
-# ==============================================================================
-# ⚡ THE CONTINUOUS 24/7 PAPER TRADING ENGINE LOOP
-# ==============================================================================
-print("\n🤖 158% ROI Framework Active on Cloud Infrastructure...")
-
-try:
-    while True:
-        now_str = datetime.now().strftime('%H:%M:%S')
-        print(f"⏳ Loop completed at {now_str}. Scanning market ticks continuously... PC Status: OFF ✅")
-        time.sleep(60)
-
-except KeyboardInterrupt:
-    print("\n🛑 Cloud Algo Framework Shutdown Safely.")
+  File "/opt/render/project/src/.venv/lib/python3.14/site-packages/dhanhq/dhanhq.py", line 58, in __init__
+    parent.__init__(self,dhan_context)
+    ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^
+  File "/opt/render/project/src/.venv/lib/python3.14/site-packages/dhanhq/_order.py", line 5, in __init__
+    self.dhan_http = dhan_context.get_dhan_http()
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: 'dict' object has no attribute 'get_dhan_http'
+==> Exited with status 1
+==> Common ways to troubleshoot your deploy: https://render.com/docs/troubleshooting-deploys
+==> Running 'python dhan_cloud_paper.py'
+==> Deploying...
+==> Setting WEB_CONCURRENCY=1 by default, based on available CPUs in the instance
+==> Running 'python dhan_cloud_paper.py'
+Traceback (most recent call last):
+  File "/opt/render/project/src/dhan_cloud_paper.py", line 40, in <module>
+    dhan = dhanhq(dhan_context={"client_id": CLIENT_ID, "access_token": ACCESS_TOKEN})
+  File "/opt/render/project/src/.venv/lib/python3.14/site-packages/dhanhq/dhanhq.py", line 58, in __init__
+    parent.__init__(self,dhan_context)
+    ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^
+  File "/opt/render/project/src/.venv/lib/python3.14/site-packages/dhanhq/_order.py", line 5, in __init__
+    self.dhan_http = dhan_context.get_dhan_http()
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: 'dict' object has no attribute 'get_dhan_http'
+==> Exited with status 1
+==> Common ways to troubleshoot your deploy: https://render.com/docs/troubleshooting-deploys

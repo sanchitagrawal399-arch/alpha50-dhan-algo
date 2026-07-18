@@ -7,8 +7,6 @@ from dhanhq import dhanhq
 # ==============================================================================
 # 📊 GOOGLE SHEET CONTROL LAYER (SECURED VIA ENV VARIABLES)
 # ==============================================================================
-# GitHub par koi ID nahi dikhega! Render secure locker se automatic uthayega
-import os
 SPREADSHEET_ID = os.environ.get("MY_SECRET_SHEET_ID") 
 SHEET_URL = f"https://docs.google.com/spreadsheets/d/{SPREADSHEET_ID}/export?format=csv"
 
@@ -17,7 +15,6 @@ def get_live_credentials():
         df = pd.read_csv(SHEET_URL)
         df.columns = df.columns.str.strip()
         
-        # Checking if data exists
         if df.empty:
             print("❌ Google Sheet is empty! Please add data in row 2.")
             return None, None
@@ -34,8 +31,8 @@ if not CLIENT_ID or not ACCESS_TOKEN or "YOUR_" in ACCESS_TOKEN:
     print("❌ Critical: Valid credentials not found in Google Sheet.")
     exit()
 
-# Connect to Dhan API (FIXED: Named arguments to prevent TypeError)
-dhan = dhanhq(client_id=CLIENT_ID, access_token=ACCESS_TOKEN)
+# Connect to Dhan API (FIXED: Standard arguments style without explicit names to bypass version mismatch)
+dhan = dhanhq(CLIENT_ID, ACCESS_TOKEN)
 
 # ==============================================================================
 # 🎯 STRATEGY CORE RULEBOOK (ALPHA50 WEAPON MATRIX)

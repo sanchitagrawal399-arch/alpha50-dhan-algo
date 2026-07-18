@@ -32,21 +32,19 @@ if not CLIENT_ID or not ACCESS_TOKEN or "YOUR_" in ACCESS_TOKEN:
     exit()
 
 # ==============================================================================
-# 🛡️ DHAN CONNECTION LAYER (ULTIMATE FIX FOR VERSION MISMATCH)
+# 🛡️ DHAN CONNECTION LAYER (FIXED FOR VERSION 2.2.0)
 # ==============================================================================
-# Dhan ke naye python SDKs mein initialization strictly explicit parameter mapping maangta hai
+# Naye update ke mutabik client initialization:
 try:
-    dhan = dhanhq(CLIENT_ID, ACCESS_TOKEN)
+    # Latest DhanHQ convention requires a distinct client structure
+    dhan = dhanhq(dhan_context={"client_id": CLIENT_ID, "access_token": ACCESS_TOKEN})
 except TypeError:
     try:
-        # Agar positional arguments match nahi kar rahe, toh explicit named dictionary fallback use karenge
-        dhan = dhanhq(client_id=CLIENT_ID, access_token=ACCESS_TOKEN)
+        # Fallback if structural initialization differs
+        dhan = dhanhq(CLIENT_ID, ACCESS_TOKEN)
     except Exception as e:
-        print(f"❌ Initialization configuration mismatch: {e}")
-        # Final fallback agar library module functions directly modify ho chuke hain
-        dhan = dhanhq()
-        dhan.client_id = CLIENT_ID
-        dhan.access_token = ACCESS_TOKEN
+        print(f"❌ Initialization error: {e}")
+        exit()
 
 # ==============================================================================
 # 🎯 STRATEGY CORE RULEBOOK (ALPHA50 WEAPON MATRIX)

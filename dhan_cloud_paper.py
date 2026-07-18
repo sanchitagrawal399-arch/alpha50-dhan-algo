@@ -5,9 +5,11 @@ from datetime import datetime
 from dhanhq import dhanhq
 
 # ==============================================================================
-# 📊 GOOGLE SHEET CONTROL LAYER
+# 📊 GOOGLE SHEET CONTROL LAYER (SECURED VIA ENV VARIABLES)
 # ==============================================================================
-SPREADSHEET_ID = "YOUR_GOOGLE_SPREADSHEET_ID_HERE" # <-- Apni Google Sheet ID yahan daalo
+# GitHub par koi ID nahi dikhega! Render secure locker se automatic uthayega
+import os
+SPREADSHEET_ID = os.environ.get("MY_SECRET_SHEET_ID") 
 SHEET_URL = f"https://docs.google.com/spreadsheets/d/{SPREADSHEET_ID}/export?format=csv"
 
 def get_live_credentials():

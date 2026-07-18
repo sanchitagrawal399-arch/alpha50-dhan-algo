@@ -31,8 +31,22 @@ if not CLIENT_ID or not ACCESS_TOKEN or "YOUR_" in ACCESS_TOKEN:
     print("❌ Critical: Valid credentials not found in Google Sheet.")
     exit()
 
-# Connect to Dhan API (FIXED: Standard arguments style without explicit names to bypass version mismatch)
-dhan = dhanhq(CLIENT_ID, ACCESS_TOKEN)
+# ==============================================================================
+# 🛡️ DHAN CONNECTION LAYER (ULTIMATE FIX FOR VERSION MISMATCH)
+# ==============================================================================
+# Dhan ke naye python SDKs mein initialization strictly explicit parameter mapping maangta hai
+try:
+    dhan = dhanhq(CLIENT_ID, ACCESS_TOKEN)
+except TypeError:
+    try:
+        # Agar positional arguments match nahi kar rahe, toh explicit named dictionary fallback use karenge
+        dhan = dhanhq(client_id=CLIENT_ID, access_token=ACCESS_TOKEN)
+    except Exception as e:
+        print(f"❌ Initialization configuration mismatch: {e}")
+        # Final fallback agar library module functions directly modify ho chuke hain
+        dhan = dhanhq()
+        dhan.client_id = CLIENT_ID
+        dhan.access_token = ACCESS_TOKEN
 
 # ==============================================================================
 # 🎯 STRATEGY CORE RULEBOOK (ALPHA50 WEAPON MATRIX)
@@ -50,7 +64,7 @@ try:
     if profile.get('status') == 'success':
         print(f"✅ Dhan API Securely Authenticated. Active Client: {profile['data']['dhanClientId']}")
     else:
-        print("❌ Dhan authentication failed.")
+        print("❌ Dhan authentication failed. Please check the token inside your Sheet.")
         exit()
 except Exception as e:
     print(f"❌ Dhan API Connection Error: {e}")

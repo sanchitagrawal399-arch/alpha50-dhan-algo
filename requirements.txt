@@ -1,2 +1,5 @@
-dhanhq
 pandas
+numpy
+pandas-ta
+requests
+dhanhq

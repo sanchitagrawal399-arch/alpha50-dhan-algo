@@ -1,6 +1,5 @@
 pandas
 numpy
-requests
-dhanhq
 gspread
 oauth2client
+dhanhq

@@ -2,4 +2,4 @@ pandas
 numpy
 gspread
 oauth2client
-dhanhq
+yfinance

@@ -24,7 +24,41 @@ def log_trade(stock, t_type, e_time, e_price, sl, target, qty, status):
     sheet.append_row(row)
 
 # ==============================================================================
-# 📈 STRATEGY ENGINE (15-MIN PANDAS IMPLEMENTATION)
+# 📈 PURE PANDAS ADX CALCULATION (NO TA-LIB SHORTCUTS)
+# ==============================================================================
+def calculate_adx(df, periods=14):
+    df = df.copy()
+    high = df['High']
+    low = df['Low']
+    close = df['Close']
+    
+    # TR (True Range)
+    tr1 = high - low
+    tr2 = np.abs(high - close.shift(1))
+    tr3 = np.abs(low - close.shift(1))
+    tr = pd.concat([tr1, tr2, tr3], axis=1).max(axis=1)
+    
+    # Directional Movement (+DM and -DM)
+    up_move = high.diff()
+    down_move = low.diff().shift(-1) # Shift inversion for matching down movement
+    down_move = -low.diff()
+    
+    plus_dm = np.where((up_move > down_move) & (up_move > 0), up_move, 0.0)
+    minus_dm = np.where((down_move > up_move) & (down_move > 0), down_move, 0.0)
+    
+    # Smoothed Wilder's values
+    atr = tr.ewm(alpha=1/periods, adjust=False).mean()
+    plus_di = 100 * (pd.Series(plus_dm, index=df.index).ewm(alpha=1/periods, adjust=False).mean() / atr)
+    minus_di = 100 * (pd.Series(minus_dm, index=df.index).ewm(alpha=1/periods, adjust=False).mean() / atr)
+    
+    # Directional Movement Index (DX) & ADX
+    dx = 100 * np.abs(plus_di - minus_di) / (plus_di + minus_di)
+    adx = dx.ewm(alpha=1/periods, adjust=False).mean()
+    
+    return adx
+
+# ==============================================================================
+# 📉 STRATEGY ENGINE (ORIGINAL BACKTESTED LOGIC ONLY)
 # ==============================================================================
 def calculate_indicators_and_signals(df):
     df = df.copy()
@@ -50,10 +84,10 @@ def calculate_indicators_and_signals(df):
     rs = gain / loss
     df['RSI'] = 100 - (100 / (1 + rs))
 
-    # --- Trend Filters & ADX Buffer ---
-    df["ADX"] = 25  
+    # Dynamic ADX Integration (No bypass)
+    df["ADX"] = calculate_adx(df, periods=14)
     
-    # Intraday Time Filter (15-min candles ke liye)
+    # Intraday Time Filter
     time_filter = (df.index.time >= dt_time(9, 30)) & (df.index.time <= dt_time(15, 0))
     
     long_trend = (df["Close"] > df["VWAP"]) & (df["EMA9"] > df["EMA21"]) & (df["ADX"] >= 23)
@@ -72,6 +106,7 @@ def calculate_indicators_and_signals(df):
     df.loc[buy, "Signal"] = "BUY"
     df.loc[sell, "Signal"] = "SELL"
     
+    # Original Risk-Reward Rules based on Dynamic ADX
     df["RR_Multiplier"] = np.where(df["ADX"] >= 35, 2.8, np.where(df["ADX"] >= 23, 1.8, 1.2))
     
     long_sl = pd.concat([df["Low"].shift(1), df["Low"]], axis=1).min(axis=1) - (0.10 * df["ATR"])
@@ -103,12 +138,10 @@ def run_trading_bot():
     while True:
         now = datetime.now().time()
         
-        # Live Market Hours (9:15 AM - 3:30 PM)
         if dt_time(9, 15) <= now <= dt_time(15, 30):
             for stock in WATCHLIST:
                 try:
                     ticker = yf.Ticker(stock)
-                    # ⚡ CHANGED: yfinance se ab STRICTLY 15-minute interval ka data aayega
                     df = ticker.history(period="5d", interval="15m")
                     
                     if df.empty:
@@ -134,10 +167,9 @@ def run_trading_bot():
                     
         else:
             print(f"💤 Market Closed ({datetime.now().strftime('%H:%M:%S')}). Sleeping...", flush=True)
-            time.sleep(900) # Market closed hone par 15 min tak sleep karega
+            time.sleep(900)
             continue
             
-        # ⚡ 15-min candle scan ke liye har 1-2 minute me check karna kaafi hai
         time.sleep(60)
 
 if __name__ == "__main__":

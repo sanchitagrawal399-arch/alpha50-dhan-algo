@@ -2,28 +2,22 @@ import os
 import threading
 import time
 import gspread
-from dhanhq import dhanhq
 import pandas as pd
 import numpy as np
+import yfinance as yf
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from oauth2client.service_account import ServiceAccountCredentials
 from datetime import datetime, time as dt_time
 
 # ==============================================================================
-# 🛠️ SETUP: CONNECTIONS & API
+# 🛠️ SETUP: GOOGLE SHEETS CONNECTION
 # ==============================================================================
-# Render ke Secret Files se service_account.json read ho raha hai
 creds = ServiceAccountCredentials.from_json_keyfile_name(
     'service_account.json', 
     ['https://spreadsheets.google.com/feeds', 'https://www.googleapis.com/auth/drive']
 )
 client = gspread.authorize(creds)
 sheet = client.open_by_key(os.environ.get("MY_SECRET_SHEET_ID")).worksheet("Trades")
-
-# 🟢 FIXED: Dhan HQ Official Library Integration
-CLIENT_ID = os.environ.get("CLIENT_ID")
-ACCESS_TOKEN = os.environ.get("ACCESS_TOKEN")
-dhan = dhanhq(CLIENT_ID, ACCESS_TOKEN)
 
 def log_trade(stock, t_type, e_time, e_price, sl, target, qty, status):
     # Column Order: Stock, Type, Entry_Time, Exit_Time, Entry_Price, Exit_Price, StopLoss, Target, Quantity, Status
@@ -57,8 +51,8 @@ def calculate_indicators_and_signals(df):
     rs = gain / loss
     df['RSI'] = 100 - (100 / (1 + rs))
 
-    # --- Trend Filters & ADX Mock (Keep as per original requirements) ---
-    df["ADX"] = 25  # Default threshold buffer
+    # --- Trend Filters & ADX Buffer ---
+    df["ADX"] = 25  
     time_filter = (df.index.time >= dt_time(10, 0)) & (df.index.time <= dt_time(14, 30))
     
     long_trend = (df["Close"] > df["VWAP"]) & (df["EMA9"] > df["EMA21"]) & (df["ADX"] >= 23)
@@ -98,57 +92,44 @@ def start_dummy_server():
     server.serve_forever()
 
 # ==============================================================================
-# 🤖 AUTOMATED LIVE TRADING ENGINE
+# 🤖 AUTOMATED PAPER TRADING ENGINE
 # ==============================================================================
 def run_trading_bot():
-    print("🚀 Alpha50 Trading Engine Live & Scanning Dhan Live Data...", flush=True)
+    print("🚀 Alpha50 Paper Trading Engine Live & Scanning Market Data...", flush=True)
     
-    # Yahan apne stocks ke trading symbols daal do
-    WATCHLIST = ["INFY", "RELIANCE", "TCS"] 
+    # Indian stocks ke tickers yfinance ke liye (.NS lagana zaroori hai)
+    WATCHLIST = ["INFY.NS", "RELIANCE.NS", "TCS.NS"] 
     
     while True:
         now = datetime.now().time()
         
-        # Live Market Hours Only (9:15 AM - 3:30 PM)
+        # Market Hours Only (9:15 AM - 3:30 PM)
         if dt_time(9, 15) <= now <= dt_time(15, 30):
             for stock in WATCHLIST:
                 try:
-                    # Dhan API standard intraday historical fetch (1-minute charts)
-                    # Arguments: security_id, exchange_segment, instrument_type
-                    # Example parameters for Equity: exchange_segment='NSE_EQ'
-                    response = dhan.get_intraday_data(
-                        security_id=stock, 
-                        exchange_segment='NSE_EQ', 
-                        instrument_type='EQUITY'
-                    )
+                    # Yahoo Finance se 5-minute interval ka live intraday data uthana
+                    ticker = yf.Ticker(stock)
+                    df = ticker.history(period="5d", interval="5m")
                     
-                    if response and response.get('status') == 'success':
-                        data_list = response.get('data', [])
-                        if not data_list:
-                            continue
-                            
-                        # Dataframe structural mapping
-                        df = pd.DataFrame(data_list)
-                        df['Timestamp'] = pd.to_datetime(df['start_time'])
-                        df.set_index('Timestamp', inplace=True)
-                        df.rename(columns={'open': 'Open', 'high': 'High', 'low': 'Low', 'close': 'Close', 'volume': 'Volume'}, inplace=True)
+                    if df.empty:
+                        continue
                         
-                        # Process indicators & signals
-                        processed_df = calculate_indicators_and_signals(df)
-                        last_row = processed_df.iloc[-1]
-                        
-                        if last_row["Signal"] in ["BUY", "SELL"]:
-                            print(f"🔥 SIGNAL DETECTED: {stock} -> {last_row['Signal']}", flush=True)
-                            log_trade(
-                                stock=stock,
-                                t_type=last_row["Signal"],
-                                e_time=datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
-                                e_price=last_row["Close"],
-                                sl=last_row["StopLoss"],
-                                target=last_row["Target"],
-                                qty=10, 
-                                status="PAPER_LIVE"
-                            )
+                    # Process indicators & signals
+                    processed_df = calculate_indicators_and_signals(df)
+                    last_row = processed_df.iloc[-1]
+                    
+                    if last_row["Signal"] in ["BUY", "SELL"]:
+                        print(f"🔥 PAPER SIGNAL DETECTED: {stock} -> {last_row['Signal']}", flush=True)
+                        log_trade(
+                            stock=stock.replace(".NS", ""), # Sheet me normal naam dikhe
+                            t_type=last_row["Signal"],
+                            e_time=datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+                            e_price=float(last_row["Close"]),
+                            sl=float(last_row["StopLoss"]) if not pd.isna(last_row["StopLoss"]) else 0,
+                            target=float(last_row["Target"]) if not pd.isna(last_row["Target"]) else 0,
+                            qty=10, 
+                            status="PAPER_LIVE"
+                        )
                 except Exception as e:
                     print(f"❌ Error tracking {stock}: {str(e)}", flush=True)
                     

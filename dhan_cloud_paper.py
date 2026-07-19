@@ -20,12 +20,11 @@ client = gspread.authorize(creds)
 sheet = client.open_by_key(os.environ.get("MY_SECRET_SHEET_ID")).worksheet("Trades")
 
 def log_trade(stock, t_type, e_time, e_price, sl, target, qty, status):
-    # Column Order: Stock, Type, Entry_Time, Exit_Time, Entry_Price, Exit_Price, StopLoss, Target, Quantity, Status
     row = [stock, t_type, e_time, "", e_price, "", sl, target, qty, status]
     sheet.append_row(row)
 
 # ==============================================================================
-# 📈 STRATEGY ENGINE (PANDAS IMPLEMENTATION)
+# 📈 STRATEGY ENGINE (15-MIN PANDAS IMPLEMENTATION)
 # ==============================================================================
 def calculate_indicators_and_signals(df):
     df = df.copy()
@@ -53,7 +52,9 @@ def calculate_indicators_and_signals(df):
 
     # --- Trend Filters & ADX Buffer ---
     df["ADX"] = 25  
-    time_filter = (df.index.time >= dt_time(10, 0)) & (df.index.time <= dt_time(14, 30))
+    
+    # Intraday Time Filter (15-min candles ke liye)
+    time_filter = (df.index.time >= dt_time(9, 30)) & (df.index.time <= dt_time(15, 0))
     
     long_trend = (df["Close"] > df["VWAP"]) & (df["EMA9"] > df["EMA21"]) & (df["ADX"] >= 23)
     short_trend = (df["Close"] < df["VWAP"]) & (df["EMA9"] < df["EMA21"]) & (df["ADX"] >= 23)
@@ -95,33 +96,31 @@ def start_dummy_server():
 # 🤖 AUTOMATED PAPER TRADING ENGINE
 # ==============================================================================
 def run_trading_bot():
-    print("🚀 Alpha50 Paper Trading Engine Live & Scanning Market Data...", flush=True)
+    print("🚀 Alpha50 15-Min Paper Trading Engine Live...", flush=True)
     
-    # Indian stocks ke tickers yfinance ke liye (.NS lagana zaroori hai)
     WATCHLIST = ["INFY.NS", "RELIANCE.NS", "TCS.NS"] 
     
     while True:
         now = datetime.now().time()
         
-        # Market Hours Only (9:15 AM - 3:30 PM)
+        # Live Market Hours (9:15 AM - 3:30 PM)
         if dt_time(9, 15) <= now <= dt_time(15, 30):
             for stock in WATCHLIST:
                 try:
-                    # Yahoo Finance se 5-minute interval ka live intraday data uthana
                     ticker = yf.Ticker(stock)
-                    df = ticker.history(period="5d", interval="5m")
+                    # ⚡ CHANGED: yfinance se ab STRICTLY 15-minute interval ka data aayega
+                    df = ticker.history(period="5d", interval="15m")
                     
                     if df.empty:
                         continue
                         
-                    # Process indicators & signals
                     processed_df = calculate_indicators_and_signals(df)
                     last_row = processed_df.iloc[-1]
                     
                     if last_row["Signal"] in ["BUY", "SELL"]:
-                        print(f"🔥 PAPER SIGNAL DETECTED: {stock} -> {last_row['Signal']}", flush=True)
+                        print(f"🔥 15-MIN PAPER SIGNAL: {stock} -> {last_row['Signal']}", flush=True)
                         log_trade(
-                            stock=stock.replace(".NS", ""), # Sheet me normal naam dikhe
+                            stock=stock.replace(".NS", ""),
                             t_type=last_row["Signal"],
                             e_time=datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
                             e_price=float(last_row["Close"]),
@@ -135,9 +134,10 @@ def run_trading_bot():
                     
         else:
             print(f"💤 Market Closed ({datetime.now().strftime('%H:%M:%S')}). Sleeping...", flush=True)
-            time.sleep(300)
+            time.sleep(900) # Market closed hone par 15 min tak sleep karega
             continue
             
+        # ⚡ 15-min candle scan ke liye har 1-2 minute me check karna kaafi hai
         time.sleep(60)
 
 if __name__ == "__main__":

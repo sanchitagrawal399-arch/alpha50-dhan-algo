@@ -1,6 +1,8 @@
 import os
 import json
 import time
+import threading
+from http.server import HTTPServer, BaseHTTPRequestHandler
 from datetime import datetime, time as dtime
 import pandas as pd
 import yfinance as yf
@@ -9,7 +11,24 @@ from oauth2client.service_account import ServiceAccountCredentials
 from strategy_engine import generate_signals
 
 # ==========================================
-# 1. GOOGLE SHEETS SETUP (SECURE VIA ENV VAR)
+# 0. DUMMY WEB SERVER FOR RENDER FREE TIER (PORT BINDING)
+# ==========================================
+class SimpleHandler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200)
+        self.end_headers()
+        self.wfile.write(b"Alpha50 Algo Engine is Running Successfully!")
+
+def run_fake_server():
+    port = int(os.environ.get("PORT", 10000))
+    server = HTTPServer(('0.0.0.0', port), SimpleHandler)
+    server.serve_forever()
+
+# Start fake server in background immediately
+threading.Thread(target=run_fake_server, daemon=True).start()
+
+# ==========================================
+# 1. GOOGLE SHEETS SETUP (SECURE VIA ENV VAR / SECRET FILE)
 # ==========================================
 SCOPE = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
 
@@ -26,13 +45,13 @@ try:
             CREDS = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, SCOPE)
         elif os.path.exists("credentials.json"):
             CREDS = ServiceAccountCredentials.from_json_keyfile_name("credentials.json", SCOPE)
+        elif os.path.exists("/etc/secrets/credentials.json"):
+            CREDS = ServiceAccountCredentials.from_json_keyfile_name("/etc/secrets/credentials.json", SCOPE)
         else:
             raise FileNotFoundError("Na 'credentials.json' file mili na 'GSPREAD_CREDENTIALS' env variable!")
 
         CLIENT = gspread.authorize(CREDS)
         spreadsheet = CLIENT.open_by_key(SHEET_ID)
-        
-        # Tera exact tab 'Trades'
         sheet = spreadsheet.worksheet("Trades") 
         print(f"✅ Google Sheets connected successfully! Connected to Tab: '{sheet.title}'")
 
@@ -58,7 +77,6 @@ def run_live_tracker():
     for stock in STOCKS:
         try:
             yf_symbol = f"{stock}.NS"
-            # 15m Candles for last 5 days
             df = yf.download(yf_symbol, period="5d", interval="15m", progress=False)
             
             if df.empty:
@@ -68,11 +86,8 @@ def run_live_tracker():
                 df.columns = df.columns.droplevel(1)
             
             df.index = pd.to_datetime(df.index)
-            
-            # Core strategy engine call
             df = generate_signals(df)
             
-            # Last closed candle check (Index -2)
             last_closed = df.iloc[-2] 
             signal = last_closed.get("Signal", "")
             
@@ -81,26 +96,17 @@ def run_live_tracker():
                 entry_price = round(last_closed["Entry"], 2)
                 trade_type = "LONG" if signal == "BUY" else "SHORT"
                 
-                # Default trade metrics for open positions
                 exit_time = "-"
                 exit_price = "-"
-                quantity = 1  # Fixed Qty for Paper Trading
+                quantity = 1  
                 pnl = 0.0
                 status = "OPEN"
                 
                 print(f"🚨 SIGNAL DETECTED: {stock} | {trade_type} | Entry: ₹{entry_price}")
                 
-                # Stock | Type | Entry_Time | Exit_Time | Entry_Price | Exit_Price | Quantity | P&L | Status
                 row_data = [
-                    stock, 
-                    trade_type, 
-                    entry_time, 
-                    exit_time, 
-                    entry_price, 
-                    exit_price, 
-                    quantity, 
-                    pnl, 
-                    status
+                    stock, trade_type, entry_time, exit_time, 
+                    entry_price, exit_price, quantity, pnl, status
                 ]
                 
                 if sheet:
@@ -127,24 +133,7 @@ if __name__ == "__main__":
         if start_time <= now <= end_time:
             run_live_tracker()
             print("⏳ Waiting 15 minutes for the next candle to close...\n")
-            time.sleep(900) # Exact 15 Minutes = 900 Seconds
+            time.sleep(900) 
         else:
             print(f"[{datetime.now().strftime('%H:%M:%S')}] 😴 Market Closed. Waiting...")
             time.sleep(60)
-
-# Dummy Web Server to satisfy Render Free Tier Port requirement
-import threading
-from http.server import HTTPServer, BaseHTTPRequestHandler
-
-class SimpleHandler(BaseHTTPRequestHandler):
-    def do_GET(self):
-        self.send_response(200)
-        self.end_headers()
-        self.wfile.write(b"Alpha50 Algo is Running!")
-
-def run_fake_server():
-    port = int(os.environ.get("PORT", 10000))
-    server = HTTPServer(('0.0.0.0', port), SimpleHandler)
-    server.serve_forever()
-
-threading.Thread(target=run_fake_server, daemon=True).start()

@@ -131,3 +131,20 @@ if __name__ == "__main__":
         else:
             print(f"[{datetime.now().strftime('%H:%M:%S')}] 😴 Market Closed. Waiting...")
             time.sleep(60)
+
+# Dummy Web Server to satisfy Render Free Tier Port requirement
+import threading
+from http.server import HTTPServer, BaseHTTPRequestHandler
+
+class SimpleHandler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200)
+        self.end_headers()
+        self.wfile.write(b"Alpha50 Algo is Running!")
+
+def run_fake_server():
+    port = int(os.environ.get("PORT", 10000))
+    server = HTTPServer(('0.0.0.0', port), SimpleHandler)
+    server.serve_forever()
+
+threading.Thread(target=run_fake_server, daemon=True).start()

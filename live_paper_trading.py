@@ -4,6 +4,7 @@ import time
 import threading
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from datetime import datetime, time as dtime
+import pytz
 import pandas as pd
 import yfinance as yf
 import gspread
@@ -11,7 +12,7 @@ from oauth2client.service_account import ServiceAccountCredentials
 from strategy_engine import generate_signals
 
 # ==========================================
-# 0. DUMMY WEB SERVER FOR RENDER FREE TIER (PORT BINDING)
+# 0. DUMMY WEB SERVER FOR RENDER PORT BINDING
 # ==========================================
 class SimpleHandler(BaseHTTPRequestHandler):
     def do_GET(self):
@@ -24,16 +25,18 @@ def run_fake_server():
     server = HTTPServer(('0.0.0.0', port), SimpleHandler)
     server.serve_forever()
 
-# Start fake server in background immediately
+# Start fake server in background thread
 threading.Thread(target=run_fake_server, daemon=True).start()
 
+print("🚀 Starting Alpha50 Live Paper Trader Script...")
+
 # ==========================================
-# 1. GOOGLE SHEETS SETUP (SECURE VIA ENV VAR / SECRET FILE)
+# 1. GOOGLE SHEETS SETUP
 # ==========================================
 SCOPE = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
 
 SHEET_ID = os.getenv("MY_SECRET_SHEET_ID")
-CREDS_JSON_ENV = os.getenv("GSPREAD_CREDENTIALS") # Render deployment ke liye
+CREDS_JSON_ENV = os.getenv("GSPREAD_CREDENTIALS")
 
 sheet = None
 try:
@@ -69,10 +72,12 @@ STOCKS = [
 ]
 
 # ==========================================
-# 3. LIVE PAPER TRADER ENGINE (15-MIN TIMEFRAME)
+# 3. LIVE PAPER TRADER ENGINE
 # ==========================================
 def run_live_tracker():
-    print(f"[{datetime.now().strftime('%H:%M:%S')}] 🔄 Checking 15-Min Live Signals on yfinance...")
+    ist = pytz.timezone('Asia/Kolkata')
+    now_ist = datetime.now(ist).strftime('%H:%M:%S')
+    print(f"[{now_ist} IST] 🔄 Checking 15-Min Live Signals on yfinance...")
     
     for stock in STOCKS:
         try:
@@ -93,7 +98,7 @@ def run_live_tracker():
             
             if signal in ["BUY", "SELL"]:
                 entry_time = df.index[-2].strftime("%Y-%m-%d %H:%M:%S")
-                entry_price = round(last_closed["Entry"], 2)
+                entry_price = round(float(last_closed["Entry"]), 2)
                 trade_type = "LONG" if signal == "BUY" else "SHORT"
                 
                 exit_time = "-"
@@ -120,20 +125,24 @@ def run_live_tracker():
             continue
 
 # ==========================================
-# 4. MAIN SCHEDULER LOOP
+# 4. MAIN SCHEDULER LOOP (WITH IST TIMEZONE)
 # ==========================================
-if __name__ == "__main__":
-    print("🚀 Starting Alpha50 Live Paper Trader (15-Min System)...")
+ist = pytz.timezone('Asia/Kolkata')
+
+while True:
+    now_ist_dt = datetime.now(ist)
+    now_time = now_ist_dt.time()
     
-    while True:
-        now = datetime.now().time()
-        start_time = dtime(9, 15)
-        end_time = dtime(15, 30)
-        
-        if start_time <= now <= end_time:
-            run_live_tracker()
-            print("⏳ Waiting 15 minutes for the next candle to close...\n")
-            time.sleep(900) 
-        else:
-            print(f"[{datetime.now().strftime('%H:%M:%S')}] 😴 Market Closed. Waiting...")
-            time.sleep(60)
+    start_time = dtime(9, 15)
+    end_time = dtime(15, 30)
+    
+    # Check weekday (0 = Monday, ..., 4 = Friday)
+    is_weekday = now_ist_dt.weekday() < 5
+    
+    if is_weekday and (start_time <= now_time <= end_time):
+        run_live_tracker()
+        print("⏳ Waiting 15 minutes for next check...\n")
+        time.sleep(900) 
+    else:
+        print(f"[{now_ist_dt.strftime('%H:%M:%S')} IST] 😴 Market Closed / Weekend. Sleeping for 1 minute...")
+        time.sleep(60)

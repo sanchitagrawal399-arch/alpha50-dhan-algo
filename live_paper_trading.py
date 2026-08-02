@@ -25,7 +25,6 @@ def run_fake_server():
     server = HTTPServer(('0.0.0.0', port), SimpleHandler)
     server.serve_forever()
 
-# Start fake server in background thread
 threading.Thread(target=run_fake_server, daemon=True).start()
 
 print("🚀 Starting Alpha50 Live Paper Trader Script...")
@@ -77,16 +76,26 @@ STOCKS = [
 def run_live_tracker():
     ist = pytz.timezone('Asia/Kolkata')
     now_ist = datetime.now(ist).strftime('%H:%M:%S')
-    print(f"[{now_ist} IST] 🔄 Checking 15-Min Live Signals on yfinance...")
+    print(f"\n[{now_ist} IST] 🔄 Checking 15-Min Live Signals on yfinance...")
     
+    success_count = 0
+    signal_count = 0
+
     for stock in STOCKS:
         try:
             yf_symbol = f"{stock}.NS"
-            df = yf.download(yf_symbol, period="5d", interval="15m", progress=False)
+            
+            # Use Ticker history for cleaner fetching
+            ticker_obj = yf.Ticker(yf_symbol)
+            df = ticker_obj.history(period="5d", interval="15m")
             
             if df.empty:
+                print(f"⚠️ {stock}: No data received (possible rate-limit).")
+                time.sleep(3)  # Extra delay if empty
                 continue
                 
+            success_count += 1
+            
             if isinstance(df.columns, pd.MultiIndex):
                 df.columns = df.columns.droplevel(1)
             
@@ -97,6 +106,7 @@ def run_live_tracker():
             signal = last_closed.get("Signal", "")
             
             if signal in ["BUY", "SELL"]:
+                signal_count += 1
                 entry_time = df.index[-2].strftime("%Y-%m-%d %H:%M:%S")
                 entry_price = round(float(last_closed["Entry"]), 2)
                 trade_type = "LONG" if signal == "BUY" else "SHORT"
@@ -116,13 +126,19 @@ def run_live_tracker():
                 
                 if sheet:
                     sheet.append_row(row_data)
-                    print(f"✅ Trade logged to Trades tab for {stock}")
+                    print(f"✅ Trade logged to Google Sheet for {stock}")
                 else:
                     print("⚠️ Sheet connected nahi hai, data push fail hua.")
+            
+            # Anti-Rate-Limit Delay between each stock check
+            time.sleep(2.5)
                     
         except Exception as e:
             print(f"⚠️ Error checking {stock}: {e}")
+            time.sleep(3)
             continue
+
+    print(f"📊 Scan Summary: {success_count}/{len(STOCKS)} stocks fetched successfully | Signals Found: {signal_count}")
 
 # ==========================================
 # 4. MAIN SCHEDULER LOOP (WITH IST TIMEZONE)
@@ -141,7 +157,7 @@ while True:
     
     if is_weekday and (start_time <= now_time <= end_time):
         run_live_tracker()
-        print("⏳ Waiting 15 minutes for next check...\n")
+        print("⏳ Waiting 15 minutes for next candle close...\n")
         time.sleep(900) 
     else:
         print(f"[{now_ist_dt.strftime('%H:%M:%S')} IST] 😴 Market Closed / Weekend. Sleeping for 1 minute...")

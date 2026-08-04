@@ -6,7 +6,7 @@ from http.server import HTTPServer, BaseHTTPRequestHandler
 from datetime import datetime, time as dtime
 import pytz
 import pandas as pd
-import yfinance as yf
+from curl_cffi import requests
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 from strategy_engine import generate_signals
@@ -48,7 +48,7 @@ try:
         elif os.path.exists("credentials.json"):
             CREDS = ServiceAccountCredentials.from_json_keyfile_name("credentials.json", SCOPE)
         else:
-            raise FileNotFoundError("Na 'credentials.json' file mili na 'GSPREAD_CREDENTIALS' env variable!")
+            raise FileNotFoundError("Credentials nahi mile!")
 
         CLIENT = gspread.authorize(CREDS)
         spreadsheet = CLIENT.open_by_key(SHEET_ID)
@@ -69,30 +69,60 @@ STOCKS = [
 ]
 
 # ==========================================
-# 3. LIVE PAPER TRADER ENGINE
+# 3. STEALTH DATA FETCHER (BYPASSES RATE LIMITS)
+# ==========================================
+def fetch_stealth_data(stock):
+    """Fetches 15-m interval candles directly impersonating Chrome browser"""
+    url = f"https://query1.finance.yahoo.com/v8/finance/chart/{stock}.NS?range=5d&interval=15m"
+    
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+    }
+    
+    # impersonate="chrome" tricks Yahoo into thinking this is a real desktop user
+    res = requests.get(url, headers=headers, impersonate="chrome", timeout=10)
+    
+    if res.status_code != 200:
+        return pd.DataFrame()
+        
+    data = res.json()
+    result = data.get("chart", {}).get("result", [])
+    
+    if not result:
+        return pd.DataFrame()
+        
+    timestamps = result[0].get("timestamp", [])
+    quote = result[0].get("indicators", {}).get("quote", [{}])[0]
+    
+    df = pd.DataFrame({
+        "Open": quote.get("open", []),
+        "High": quote.get("high", []),
+        "Low": quote.get("low", []),
+        "Close": quote.get("close", []),
+        "Volume": quote.get("volume", [])
+    }, index=pd.to_datetime(timestamps, unit="s", utc=True))
+    
+    df.index = df.index.tz_convert("Asia/Kolkata")
+    df.dropna(inplace=True)
+    return df
+
+# ==========================================
+# 4. LIVE PAPER TRADER ENGINE
 # ==========================================
 def run_live_tracker():
     ist = pytz.timezone('Asia/Kolkata')
     now_ist = datetime.now(ist).strftime('%H:%M:%S')
-    print(f"\n[{now_ist} IST] 🔄 Checking 15-Min Live Signals on yfinance...")
+    print(f"\n[{now_ist} IST] 🔄 Checking 15-Min Live Signals...")
     
     for stock in STOCKS:
         try:
-            yf_symbol = f"{stock}.NS"
-            ticker = yf.Ticker(yf_symbol)
-            df = ticker.history(period="5d", interval="15m")
-            
-            # Anti-Spam delay
-            time.sleep(1.5)
+            df = fetch_stealth_data(stock)
+            time.sleep(1) # Human delay
             
             if df.empty:
-                print(f"⚠️ {stock}: Data empty received.")
+                print(f"⚠️ {stock}: Data fetch returned empty.")
                 continue
-                
-            if isinstance(df.columns, pd.MultiIndex):
-                df.columns = df.columns.droplevel(1)
             
-            df.index = pd.to_datetime(df.index)
             df = generate_signals(df)
             
             last_closed = df.iloc[-2] 
@@ -112,14 +142,15 @@ def run_live_tracker():
                     print(f"✅ Trade logged to Trades tab for {stock}")
                 else:
                     print("⚠️ Sheet connected nahi hai, log skip hua.")
+            else:
+                print(f"🔹 {stock}: Checked (No Signal)")
                     
         except Exception as e:
             print(f"❌ Error checking {stock}: {e}")
-            time.sleep(3)
             continue
 
 # ==========================================
-# 4. MAIN SCHEDULER LOOP
+# 5. MAIN SCHEDULER LOOP
 # ==========================================
 ist = pytz.timezone('Asia/Kolkata')
 
@@ -134,7 +165,7 @@ while True:
     
     if is_weekday and (start_time <= now_time <= end_time):
         run_live_tracker()
-        print("⏳ Waiting 15 minutes for next check...\n")
+        print("\n⏳ Waiting 15 minutes for next check...\n")
         time.sleep(900) 
     else:
         print(f"[{now_ist_dt.strftime('%H:%M:%S')} IST] 😴 Market Closed / Weekend. Sleeping for 1 minute...")

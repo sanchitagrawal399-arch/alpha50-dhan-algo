@@ -3,7 +3,7 @@ import json
 import time
 import threading
 from http.server import HTTPServer, BaseHTTPRequestHandler
-from datetime import datetime, time as dtime
+from datetime import datetime, timedelta, time as dtime
 import pytz
 import pandas as pd
 from curl_cffi import requests
@@ -69,17 +69,15 @@ STOCKS = [
 ]
 
 # ==========================================
-# 3. STEALTH DATA FETCHER (BYPASSES RATE LIMITS)
+# 3. STEALTH DATA FETCHER
 # ==========================================
 def fetch_stealth_data(stock):
-    """Fetches 15-m interval candles directly impersonating Chrome browser"""
     url = f"https://query1.finance.yahoo.com/v8/finance/chart/{stock}.NS?range=5d&interval=15m"
     
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
     }
     
-    # impersonate="chrome" tricks Yahoo into thinking this is a real desktop user
     res = requests.get(url, headers=headers, impersonate="chrome", timeout=10)
     
     if res.status_code != 200:
@@ -112,12 +110,12 @@ def fetch_stealth_data(stock):
 def run_live_tracker():
     ist = pytz.timezone('Asia/Kolkata')
     now_ist = datetime.now(ist).strftime('%H:%M:%S')
-    print(f"\n[{now_ist} IST] 🔄 Checking 15-Min Live Signals...")
+    print(f"\n[{now_ist} IST] 🔄 Executing Candle-Close Scan for 18 Stocks...")
     
     for stock in STOCKS:
         try:
             df = fetch_stealth_data(stock)
-            time.sleep(1) # Human delay
+            time.sleep(0.5) 
             
             if df.empty:
                 print(f"⚠️ {stock}: Data fetch returned empty.")
@@ -150,8 +148,27 @@ def run_live_tracker():
             continue
 
 # ==========================================
-# 5. MAIN SCHEDULER LOOP
+# 5. DYNAMIC CLOCK-SYNCED SCHEDULER
 # ==========================================
+def calculate_sleep_seconds(offset_seconds=4):
+    """Calculates exact seconds to sleep until next candle close + offset_seconds"""
+    ist = pytz.timezone('Asia/Kolkata')
+    now = datetime.now(ist)
+    
+    # Bucket to current 15m mark
+    minute_bucket = (now.minute // 15) * 15
+    target_dt = now.replace(minute=minute_bucket, second=offset_seconds, microsecond=0)
+    
+    if now >= target_dt:
+        target_dt += timedelta(minutes=15)
+        
+    # 09:15 is Market Open, not candle close. First close is at 09:30:04
+    if target_dt.time() == dtime(9, 15):
+        target_dt += timedelta(minutes=15)
+        
+    sleep_secs = (target_dt - now).total_seconds()
+    return max(1.0, sleep_secs), target_dt
+
 ist = pytz.timezone('Asia/Kolkata')
 
 while True:
@@ -164,9 +181,13 @@ while True:
     is_weekday = now_ist_dt.weekday() < 5
     
     if is_weekday and (start_time <= now_time <= end_time):
+        sleep_secs, next_target = calculate_sleep_seconds(offset_seconds=4)
+        
+        print(f"⏰ Next candle check target: {next_target.strftime('%H:%M:%S')} IST (Sleeping {int(sleep_secs)}s)...")
+        time.sleep(sleep_secs)
+        
+        # Execute scanning exact at candle completion + 4 seconds
         run_live_tracker()
-        print("\n⏳ Waiting 15 minutes for next check...\n")
-        time.sleep(900) 
     else:
         print(f"[{now_ist_dt.strftime('%H:%M:%S')} IST] 😴 Market Closed / Weekend. Sleeping for 1 minute...")
         time.sleep(60)

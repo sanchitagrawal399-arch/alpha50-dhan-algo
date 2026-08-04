@@ -47,8 +47,6 @@ try:
             CREDS = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, SCOPE)
         elif os.path.exists("credentials.json"):
             CREDS = ServiceAccountCredentials.from_json_keyfile_name("credentials.json", SCOPE)
-        elif os.path.exists("/etc/secrets/credentials.json"):
-            CREDS = ServiceAccountCredentials.from_json_keyfile_name("/etc/secrets/credentials.json", SCOPE)
         else:
             raise FileNotFoundError("Na 'credentials.json' file mili na 'GSPREAD_CREDENTIALS' env variable!")
 
@@ -78,24 +76,19 @@ def run_live_tracker():
     now_ist = datetime.now(ist).strftime('%H:%M:%S')
     print(f"\n[{now_ist} IST] 🔄 Checking 15-Min Live Signals on yfinance...")
     
-    success_count = 0
-    signal_count = 0
-
     for stock in STOCKS:
         try:
             yf_symbol = f"{stock}.NS"
+            ticker = yf.Ticker(yf_symbol)
+            df = ticker.history(period="5d", interval="15m")
             
-            # Use Ticker history for cleaner fetching
-            ticker_obj = yf.Ticker(yf_symbol)
-            df = ticker_obj.history(period="5d", interval="15m")
+            # Anti-Spam delay
+            time.sleep(1.5)
             
             if df.empty:
-                print(f"⚠️ {stock}: No data received (possible rate-limit).")
-                time.sleep(3)  # Extra delay if empty
+                print(f"⚠️ {stock}: Data empty received.")
                 continue
                 
-            success_count += 1
-            
             if isinstance(df.columns, pd.MultiIndex):
                 df.columns = df.columns.droplevel(1)
             
@@ -106,42 +99,27 @@ def run_live_tracker():
             signal = last_closed.get("Signal", "")
             
             if signal in ["BUY", "SELL"]:
-                signal_count += 1
                 entry_time = df.index[-2].strftime("%Y-%m-%d %H:%M:%S")
                 entry_price = round(float(last_closed["Entry"]), 2)
                 trade_type = "LONG" if signal == "BUY" else "SHORT"
                 
-                exit_time = "-"
-                exit_price = "-"
-                quantity = 1  
-                pnl = 0.0
-                status = "OPEN"
-                
                 print(f"🚨 SIGNAL DETECTED: {stock} | {trade_type} | Entry: ₹{entry_price}")
                 
-                row_data = [
-                    stock, trade_type, entry_time, exit_time, 
-                    entry_price, exit_price, quantity, pnl, status
-                ]
+                row_data = [stock, trade_type, entry_time, "-", entry_price, "-", 1, 0.0, "OPEN"]
                 
                 if sheet:
                     sheet.append_row(row_data)
-                    print(f"✅ Trade logged to Google Sheet for {stock}")
+                    print(f"✅ Trade logged to Trades tab for {stock}")
                 else:
-                    print("⚠️ Sheet connected nahi hai, data push fail hua.")
-            
-            # Anti-Rate-Limit Delay between each stock check
-            time.sleep(2.5)
+                    print("⚠️ Sheet connected nahi hai, log skip hua.")
                     
         except Exception as e:
-            print(f"⚠️ Error checking {stock}: {e}")
+            print(f"❌ Error checking {stock}: {e}")
             time.sleep(3)
             continue
 
-    print(f"📊 Scan Summary: {success_count}/{len(STOCKS)} stocks fetched successfully | Signals Found: {signal_count}")
-
 # ==========================================
-# 4. MAIN SCHEDULER LOOP (WITH IST TIMEZONE)
+# 4. MAIN SCHEDULER LOOP
 # ==========================================
 ist = pytz.timezone('Asia/Kolkata')
 
@@ -152,12 +130,11 @@ while True:
     start_time = dtime(9, 15)
     end_time = dtime(15, 30)
     
-    # Check weekday (0 = Monday, ..., 4 = Friday)
     is_weekday = now_ist_dt.weekday() < 5
     
     if is_weekday and (start_time <= now_time <= end_time):
         run_live_tracker()
-        print("⏳ Waiting 15 minutes for next candle close...\n")
+        print("⏳ Waiting 15 minutes for next check...\n")
         time.sleep(900) 
     else:
         print(f"[{now_ist_dt.strftime('%H:%M:%S')} IST] 😴 Market Closed / Weekend. Sleeping for 1 minute...")

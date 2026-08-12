@@ -55,7 +55,7 @@ def vwap(df):
     return df["VWAP"]
 
 # ==========================================
-# 2. TRADE FILTERS (Your Original Logic)
+# 2. TRADE FILTERS
 # ==========================================
 def apply_trade_filters(df):
     df = df.copy()
@@ -63,7 +63,9 @@ def apply_trade_filters(df):
         return df
 
     df["Risk"] = abs(df["Entry"] - df["StopLoss"])
-    valid_risk = (df["Risk"] >= (0.30 * df["ATR"])) & (df["Risk"] <= (1.50 * df["ATR"]))
+    
+    # Wider Risk Range Filter: 0.6*ATR to 2.5*ATR to allow breathable SL
+    valid_risk = (df["Risk"] >= (0.60 * df["ATR"])) & (df["Risk"] <= (2.50 * df["ATR"]))
     adx_rising = df["ADX"] > df["ADX"].shift(1)
     time_runway = df.index.time <= pd.to_datetime("13:45").time()
 
@@ -89,8 +91,8 @@ def generate_signals(df):
     df["ADX"], df["PLUS_DI"], df["MINUS_DI"] = adx_data["ADX"], adx_data["PLUS_DI"], adx_data["MINUS_DI"]
 
     time_filter = (df.index.time >= pd.to_datetime("10:00").time()) & (df.index.time <= pd.to_datetime("14:30").time())
-    long_trend = (df["Close"] > df["VWAP"]) & (df["EMA9"] > df["EMA21"]) & (df["ADX"] >= 23) & (df["PLUS_DI"] > df["MINUS_DI"])
-    short_trend = (df["Close"] < df["VWAP"]) & (df["EMA9"] < df["EMA21"]) & (df["ADX"] >= 23) & (df["PLUS_DI"] < df["MINUS_DI"])
+    long_trend = (df["Close"] > df["VWAP"]) & (df["EMA9"] > df["EMA21"]) & (df["ADX"] >= 22) & (df["PLUS_DI"] > df["MINUS_DI"])
+    short_trend = (df["Close"] < df["VWAP"]) & (df["EMA9"] < df["EMA21"]) & (df["ADX"] >= 22) & (df["PLUS_DI"] < df["MINUS_DI"])
 
     pullback_buy = long_trend & (df["Low"] <= df["EMA9"]) & (df["Close"] > df["EMA21"]) & (df["RSI"] >= 40) & (df["RSI"] <= 60)
     pullback_sell = short_trend & (df["High"] >= df["EMA9"]) & (df["Close"] < df["EMA21"]) & (df["RSI"] >= 40) & (df["RSI"] <= 60)
@@ -104,10 +106,11 @@ def generate_signals(df):
     df["Signal"] = ""
     df.loc[buy, "Signal"], df.loc[sell, "Signal"] = "BUY", "SELL"
     df["Entry"] = df["Open"].shift(-1)
-    df["RR_Multiplier"] = np.where(df["ADX"] >= 35, 2.8, np.where(df["ADX"] >= 23, 1.8, 1.2))
+    df["RR_Multiplier"] = np.where(df["ADX"] >= 35, 2.5, np.where(df["ADX"] >= 23, 2.0, 1.5))
 
-    long_sl = pd.concat([df["Low"].shift(1), df["Low"]], axis=1).min(axis=1) - (0.10 * df["ATR"])
-    short_sl = pd.concat([df["High"].shift(1), df["High"]], axis=1).max(axis=1) + (0.10 * df["ATR"])
+    # WIDER SL: Swing Low/High +/- 0.8 * ATR (realistic breathable range)
+    long_sl = pd.concat([df["Low"].shift(1), df["Low"]], axis=1).min(axis=1) - (0.80 * df["ATR"])
+    short_sl = pd.concat([df["High"].shift(1), df["High"]], axis=1).max(axis=1) + (0.80 * df["ATR"])
 
     df["StopLoss"], df["Target"] = np.nan, np.nan
     if buy.any():
